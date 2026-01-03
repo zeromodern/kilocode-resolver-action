@@ -1,0 +1,61 @@
+# Using Kilocode Resolver as a Composite Action
+# This gives you more control over the workflow steps
+
+name: Custom Kilocode Workflow
+
+on:
+  issues:
+    types: [labeled]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: 'Issue number to fix'
+        required: true
+        type: number
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  fix-issue:
+    if: github.event.label.name == 'fix-me' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+      
+      - name: Run custom pre-processing
+        run: |
+          echo "Running custom setup..."
+          # Add any custom setup steps here
+      
+      - name: Run Kilocode Resolver
+        id: kilocode
+        uses: zeromodern/kilocode-resolver-action@v1
+        with:
+          kilocode_api_key: ${{ secrets.KILOCODE_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          pat_token: ${{ secrets.PAT_TOKEN }}
+          target_branch: main
+          timeout: '600'
+          pr_type: draft
+          # Optionally provide issue details directly
+          issue_number: ${{ github.event.inputs.issue_number || github.event.issue.number }}
+      
+      - name: Post-processing
+        if: steps.kilocode.outputs.has_changes == 'true'
+        run: |
+          echo "PR created: ${{ steps.kilocode.outputs.pr_url }}"
+          echo "Branch: ${{ steps.kilocode.outputs.branch_name }}"
+          # Add any custom post-processing here
+      
+      - name: Notify on failure
+        if: steps.kilocode.outputs.has_changes == 'false'
+        run: |
+          echo "Kilocode couldn't generate a fix"
+          # Add custom notification logic here

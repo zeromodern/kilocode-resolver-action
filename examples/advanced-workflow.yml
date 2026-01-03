@@ -1,0 +1,74 @@
+# Advanced Kilocode Resolver Workflow
+# This example shows all available configuration options
+
+name: Kilocode Auto-Fix (Advanced)
+
+on:
+  issues:
+    types: [labeled]
+  pull_request:
+    types: [labeled]
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
+  
+  # Allow manual triggering
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: 'Issue or PR number to fix'
+        required: true
+        type: number
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  auto-fix:
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      github.event.label.name == 'fix-me' ||
+      (
+        (github.event_name == 'issue_comment' || github.event_name == 'pull_request_review_comment') &&
+        contains(github.event.comment.body, '@kilocode-agent') &&
+        (github.event.comment.author_association == 'OWNER' || 
+         github.event.comment.author_association == 'COLLABORATOR' || 
+         github.event.comment.author_association == 'MEMBER')
+      ) ||
+      (
+        github.event_name == 'pull_request_review' &&
+        contains(github.event.review.body, '@kilocode-agent') &&
+        (github.event.review.author_association == 'OWNER' || 
+         github.event.review.author_association == 'COLLABORATOR' || 
+         github.event.review.author_association == 'MEMBER')
+      )
+    
+    uses: zeromodern/kilocode-resolver-action/.github/workflows/kilocode-resolver.yml@v1
+    with:
+      # Target branch for checkout and PR base
+      target_branch: main
+      
+      # PR type: 'draft' or 'ready'
+      pr_type: draft
+      
+      # Timeout for Kilocode CLI (in seconds)
+      timeout: 900
+      
+      # Custom runner (useful for self-hosted runners)
+      runner: ubuntu-latest
+      
+      # Custom trigger macro (default: @kilocode-agent)
+      macro: '@kilocode-agent'
+      
+      # Path to custom config file (optional)
+      # config_path: '.kilocode/config.json'
+    
+    secrets:
+      KILOCODE_API_KEY: ${{ secrets.KILOCODE_API_KEY }}
+      PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
+      PAT_USERNAME: ${{ secrets.PAT_USERNAME }}

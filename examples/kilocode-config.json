@@ -1,0 +1,33 @@
+{
+  "$schema": "https://raw.githubusercontent.com/zeromodern/kilocode-resolver-action/main/schema/config.schema.json",
+  "allowedCommands": [
+    "npm",
+    "git",
+    "pnpm",
+    "yarn",
+    "node",
+    "npx",
+    "make",
+    "cargo",
+    "python",
+    "pip",
+    "go",
+    "rustc",
+    "mvn",
+    "gradle",
+    "dotnet",
+    "ruby",
+    "bundle"
+  ],
+  "deniedCommands": [
+    "rm -rf /",
+    "sudo rm",
+    ":(){ :|:& };:",
+    "mkfs",
+    "dd if=/dev/zero"
+  ],
+  "enableBrowser": false,
+  "enableMcp": true,
+  "questionTimeout": 30,
+  "retryDelay": 10
+}

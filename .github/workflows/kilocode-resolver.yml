@@ -1,0 +1,424 @@
+name: Kilocode Resolver
+
+on:
+  workflow_call:
+    inputs:
+      max_iterations:
+        description: "Maximum iterations for kilocode to attempt"
+        required: false
+        type: number
+        default: 50
+      macro:
+        description: "The macro/mention that triggers the action in comments"
+        required: false
+        type: string
+        default: "@kilocode-agent"
+      target_branch:
+        description: "Target branch to pull from and create PR against"
+        required: false
+        type: string
+        default: "main"
+      pr_type:
+        description: "The PR type to create (draft or ready)"
+        required: false
+        type: string
+        default: "draft"
+      timeout:
+        description: "Timeout in seconds for the kilocode CLI"
+        required: false
+        type: number
+        default: 600
+      runner:
+        description: "The GitHub runner to use"
+        required: false
+        type: string
+        default: "ubuntu-latest"
+      config_path:
+        description: "Path to kilocode config file in the repository"
+        required: false
+        type: string
+        default: ""
+    secrets:
+      KILOCODE_API_KEY:
+        description: "API key for Kilocode"
+        required: true
+      PAT_TOKEN:
+        description: "Personal Access Token for GitHub operations (optional, falls back to GITHUB_TOKEN)"
+        required: false
+      PAT_USERNAME:
+        description: "Username associated with PAT_TOKEN (optional, defaults to kilocode-agent)"
+        required: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  resolve:
+    runs-on: ${{ inputs.runner || 'ubuntu-latest' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.target_branch || 'main' }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.x"
+
+      - name: Install Kilocode CLI
+        run: npm install -g @kilocode/cli
+
+      - name: Validate environment
+        env:
+          KILOCODE_API_KEY: ${{ secrets.KILOCODE_API_KEY }}
+          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
+          PAT_USERNAME: ${{ secrets.PAT_USERNAME }}
+        run: |
+          if [ -z "$KILOCODE_API_KEY" ]; then
+            echo "::error::KILOCODE_API_KEY secret is required"
+            exit 1
+          fi
+          
+          if [ -z "$PAT_TOKEN" ]; then
+            echo "::warning::PAT_TOKEN not set, falling back to GITHUB_TOKEN"
+          fi
+          
+          if [ -z "$PAT_USERNAME" ]; then
+            echo "::warning::PAT_USERNAME not set, will use kilocode-agent"
+          fi
+
+      - name: Determine issue context
+        id: context
+        env:
+          REVIEW_BODY: ${{ github.event.review.body || '' }}
+        run: |
+          # Determine issue number and type
+          if [ -n "${{ github.event.pull_request.number }}" ]; then
+            echo "issue_number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+            echo "issue_type=pr" >> $GITHUB_OUTPUT
+          elif [ -n "$REVIEW_BODY" ]; then
+            echo "issue_number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+            echo "issue_type=pr" >> $GITHUB_OUTPUT
+          elif [ -n "${{ github.event.issue.pull_request }}" ]; then
+            echo "issue_number=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
+            echo "issue_type=pr" >> $GITHUB_OUTPUT
+          else
+            echo "issue_number=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
+            echo "issue_type=issue" >> $GITHUB_OUTPUT
+          fi
+          
+          # Set comment ID if available
+          if [ -n "$REVIEW_BODY" ]; then
+            echo "comment_id=${{ github.event.review.id || '' }}" >> $GITHUB_OUTPUT
+          else
+            echo "comment_id=${{ github.event.comment.id || '' }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Fetch issue/PR details
+        id: details
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.PAT_TOKEN || github.token }}
+          script: |
+            const issueNumber = '${{ steps.context.outputs.issue_number }}';
+            const issueType = '${{ steps.context.outputs.issue_type }}';
+            
+            let details;
+            if (issueType === 'pr') {
+              const { data: pr } = await github.rest.pulls.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: issueNumber
+              });
+              details = {
+                title: pr.title,
+                body: pr.body || '',
+                url: pr.html_url
+              };
+            } else {
+              const { data: issue } = await github.rest.issues.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber
+              });
+              details = {
+                title: issue.title,
+                body: issue.body || '',
+                url: issue.html_url
+              };
+            }
+            
+            core.setOutput('title', details.title);
+            core.setOutput('body', details.body);
+            core.setOutput('url', details.url);
+
+      - name: Post start comment
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.PAT_TOKEN || github.token }}
+          script: |
+            const issueType = '${{ steps.context.outputs.issue_type }}';
+            await github.rest.issues.createComment({
+              issue_number: ${{ steps.context.outputs.issue_number }},
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `🤖 [Kilocode](https://kilo.ai) is analyzing this ${issueType} and working on a fix.\n\n📊 [View progress](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`
+            });
+
+      - name: Load repository config
+        id: config
+        run: |
+          CONFIG_PATH="${{ inputs.config_path }}"
+          
+          # Default config values
+          ALLOWED_COMMANDS='["npm", "git", "pnpm", "yarn", "node", "npx", "make", "cargo", "python", "pip", "go", "rustc", "mvn", "gradle"]'
+          DENIED_COMMANDS='["rm -rf /", "sudo rm", ":(){ :|:& };:"]'
+          ENABLE_BROWSER="false"
+          ENABLE_MCP="true"
+          QUESTION_TIMEOUT="30"
+          RETRY_DELAY="10"
+          
+          # Try to find config file
+          if [ -n "$CONFIG_PATH" ] && [ -f "$CONFIG_PATH" ]; then
+            echo "::notice::Using config from $CONFIG_PATH"
+            CONFIG_FILE="$CONFIG_PATH"
+          elif [ -f ".kilocode/config.json" ]; then
+            echo "::notice::Using config from .kilocode/config.json"
+            CONFIG_FILE=".kilocode/config.json"
+          elif [ -f ".github/kilocode.json" ]; then
+            echo "::notice::Using config from .github/kilocode.json"
+            CONFIG_FILE=".github/kilocode.json"
+          else
+            echo "::notice::No config file found, using defaults"
+            CONFIG_FILE=""
+          fi
+          
+          # Parse config if found
+          if [ -n "$CONFIG_FILE" ]; then
+            if command -v jq &> /dev/null; then
+              # Extract values with jq, falling back to defaults
+              ALLOWED_COMMANDS=$(jq -c '.allowedCommands // empty' "$CONFIG_FILE" 2>/dev/null || echo "$ALLOWED_COMMANDS")
+              DENIED_COMMANDS=$(jq -c '.deniedCommands // empty' "$CONFIG_FILE" 2>/dev/null || echo "$DENIED_COMMANDS")
+              ENABLE_BROWSER=$(jq -r '.enableBrowser // empty' "$CONFIG_FILE" 2>/dev/null || echo "$ENABLE_BROWSER")
+              ENABLE_MCP=$(jq -r '.enableMcp // empty' "$CONFIG_FILE" 2>/dev/null || echo "$ENABLE_MCP")
+              QUESTION_TIMEOUT=$(jq -r '.questionTimeout // empty' "$CONFIG_FILE" 2>/dev/null || echo "$QUESTION_TIMEOUT")
+              RETRY_DELAY=$(jq -r '.retryDelay // empty' "$CONFIG_FILE" 2>/dev/null || echo "$RETRY_DELAY")
+            else
+              echo "::warning::jq not available, using default config"
+            fi
+          fi
+          
+          # Output config values
+          echo "allowed_commands=$ALLOWED_COMMANDS" >> $GITHUB_OUTPUT
+          echo "denied_commands=$DENIED_COMMANDS" >> $GITHUB_OUTPUT
+          echo "enable_browser=$ENABLE_BROWSER" >> $GITHUB_OUTPUT
+          echo "enable_mcp=$ENABLE_MCP" >> $GITHUB_OUTPUT
+          echo "question_timeout=$QUESTION_TIMEOUT" >> $GITHUB_OUTPUT
+          echo "retry_delay=$RETRY_DELAY" >> $GITHUB_OUTPUT
+          echo "config_file=$CONFIG_FILE" >> $GITHUB_OUTPUT
+
+      - name: Configure Kilocode CLI
+        env:
+          KILOCODE_API_KEY: ${{ secrets.KILOCODE_API_KEY }}
+          ALLOWED_COMMANDS: ${{ steps.config.outputs.allowed_commands }}
+          DENIED_COMMANDS: ${{ steps.config.outputs.denied_commands }}
+          ENABLE_BROWSER: ${{ steps.config.outputs.enable_browser }}
+          ENABLE_MCP: ${{ steps.config.outputs.enable_mcp }}
+          QUESTION_TIMEOUT: ${{ steps.config.outputs.question_timeout }}
+          RETRY_DELAY: ${{ steps.config.outputs.retry_delay }}
+        run: |
+          mkdir -p ~/.config/kilocode
+          cat > ~/.config/kilocode/config.json << EOF
+          {
+            "kilocodeToken": "$KILOCODE_API_KEY",
+            "autoApproval": {
+              "enabled": true,
+              "read": {
+                "enabled": true,
+                "outside": false
+              },
+              "write": {
+                "enabled": true,
+                "outside": false,
+                "protected": true
+              },
+              "execute": {
+                "enabled": true,
+                "allowed": $ALLOWED_COMMANDS,
+                "denied": $DENIED_COMMANDS
+              },
+              "browser": {
+                "enabled": $ENABLE_BROWSER
+              },
+              "mcp": {
+                "enabled": $ENABLE_MCP
+              },
+              "mode": {
+                "enabled": true
+              },
+              "subtasks": {
+                "enabled": true
+              },
+              "question": {
+                "enabled": true,
+                "timeout": $QUESTION_TIMEOUT
+              },
+              "retry": {
+                "enabled": true,
+                "delay": $RETRY_DELAY
+              },
+              "todo": {
+                "enabled": true
+              }
+            }
+          }
+          EOF
+
+      - name: Create fix branch
+        id: branch
+        run: |
+          BRANCH_NAME="kilocode/fix-${{ steps.context.outputs.issue_number }}-$(date +%s)"
+          git checkout -b "$BRANCH_NAME"
+          echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
+
+      - name: Run Kilocode resolver
+        id: resolve
+        env:
+          KILOCODE_API_KEY: ${{ secrets.KILOCODE_API_KEY }}
+        run: |
+          ISSUE_TITLE="${{ steps.details.outputs.title }}"
+          ISSUE_BODY="${{ steps.details.outputs.body }}"
+          
+          PROMPT="Please fix the following issue:
+
+          Title: $ISSUE_TITLE
+
+          Description:
+          $ISSUE_BODY
+
+          Instructions:
+          1. Analyze the codebase to understand the context
+          2. Identify the root cause of the issue
+          3. Implement a proper fix following the project's coding standards
+          4. Run any relevant tests to verify the fix
+          5. Ensure no regressions are introduced"
+
+          echo "$PROMPT" | kilocode --auto --timeout ${{ inputs.timeout || 600 }} || true
+
+      - name: Check for changes
+        id: changes
+        run: |
+          if git diff --quiet && git diff --staged --quiet; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "::notice::No changes were made by Kilocode"
+          else
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "::notice::Changes detected"
+            git diff --stat
+          fi
+
+      - name: Commit and push changes
+        if: steps.changes.outputs.has_changes == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN || github.token }}
+          GIT_USERNAME: ${{ secrets.PAT_USERNAME || 'kilocode-agent' }}
+        run: |
+          git config user.name "$GIT_USERNAME"
+          git config user.email "$GIT_USERNAME@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: resolve issue #${{ steps.context.outputs.issue_number }}
+
+          Automated fix generated by Kilocode AI
+
+          Co-authored-by: kilocode-agent <kilocode-agent@users.noreply.github.com>"
+          
+          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git"
+          git push -u origin "${{ steps.branch.outputs.branch_name }}"
+
+      - name: Create Pull Request
+        if: steps.changes.outputs.has_changes == 'true'
+        id: pr
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.PAT_TOKEN || github.token }}
+          script: |
+            const issueNumber = '${{ steps.context.outputs.issue_number }}';
+            const branchName = '${{ steps.branch.outputs.branch_name }}';
+            const targetBranch = '${{ inputs.target_branch || 'main' }}';
+            const prType = '${{ inputs.pr_type || 'draft' }}';
+            
+            const { data: pr } = await github.rest.pulls.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `fix: resolve issue #${issueNumber}`,
+              body: `## 🤖 Automated Fix
+
+            This PR was automatically generated by [Kilocode](https://kilo.ai) to address issue #${issueNumber}.
+
+            ### Changes
+            Please review the changes made by the AI agent carefully before merging.
+
+            ### Related Issue
+            Closes #${issueNumber}
+
+            ---
+            *Generated by [kilocode-resolver-action](https://github.com/zeromodern/kilocode-resolver-action)*`,
+              head: branchName,
+              base: targetBranch,
+              draft: prType === 'draft'
+            });
+            
+            core.setOutput('pr_number', pr.number);
+            core.setOutput('pr_url', pr.html_url);
+
+      - name: Post result comment
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.PAT_TOKEN || github.token }}
+          script: |
+            const issueNumber = '${{ steps.context.outputs.issue_number }}';
+            const hasChanges = '${{ steps.changes.outputs.has_changes }}' === 'true';
+            const prNumber = '${{ steps.pr.outputs.pr_number }}';
+            const prUrl = '${{ steps.pr.outputs.pr_url }}';
+            const branchName = '${{ steps.branch.outputs.branch_name }}';
+            
+            let body;
+            if (hasChanges && prNumber) {
+              body = `✅ **Fix Generated Successfully**
+
+            A potential fix has been created in PR #${prNumber}.
+
+            👉 [Review the changes](${prUrl})
+
+            Please review the changes carefully before merging.`;
+            } else if (hasChanges) {
+              body = `⚠️ **Changes Made, PR Creation Failed**
+
+            Kilocode made changes but couldn't create a PR automatically.
+
+            👉 [View the branch](https://github.com/${context.repo.owner}/${context.repo.repo}/tree/${branchName})
+
+            You can create a PR manually from this branch.`;
+            } else {
+              body = `❌ **Unable to Generate Fix**
+
+            Kilocode analyzed the issue but couldn't generate code changes.
+
+            This could mean:
+            - The issue needs more context or details
+            - The fix requires manual intervention
+            - The codebase structure wasn't understood correctly
+
+            👉 [View workflow logs](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`;
+            }
+            
+            await github.rest.issues.createComment({
+              issue_number: parseInt(issueNumber),
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });

@@ -1,0 +1,56 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/zeromodern/kilocode-resolver-action/main/schema/config.schema.json",
+  "title": "Kilocode Resolver Configuration",
+  "description": "Configuration schema for the Kilocode Resolver Action",
+  "type": "object",
+  "properties": {
+    "allowedCommands": {
+      "type": "array",
+      "description": "List of commands that Kilocode is allowed to execute",
+      "items": {
+        "type": "string"
+      },
+      "default": ["npm", "git", "pnpm", "yarn", "node", "npx", "make", "cargo", "python", "pip", "go", "rustc", "mvn", "gradle"],
+      "examples": [
+        ["npm", "git", "node", "python"]
+      ]
+    },
+    "deniedCommands": {
+      "type": "array",
+      "description": "List of commands that are explicitly blocked",
+      "items": {
+        "type": "string"
+      },
+      "default": ["rm -rf /", "sudo rm", ":(){ :|:& };:"],
+      "examples": [
+        ["rm -rf /", "sudo"]
+      ]
+    },
+    "enableBrowser": {
+      "type": "boolean",
+      "description": "Whether to allow browser automation",
+      "default": false
+    },
+    "enableMcp": {
+      "type": "boolean",
+      "description": "Whether to enable Model Context Protocol (MCP)",
+      "default": true
+    },
+    "questionTimeout": {
+      "type": "integer",
+      "description": "Timeout in seconds for answering questions",
+      "default": 30,
+      "minimum": 1,
+      "maximum": 300
+    },
+    "retryDelay": {
+      "type": "integer",
+      "description": "Delay in seconds between retry attempts",
+      "default": 10,
+      "minimum": 1,
+      "maximum": 60
+    }
+  },
+  "additionalProperties": false
+}

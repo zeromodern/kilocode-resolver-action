@@ -1,0 +1,50 @@
+# Basic Kilocode Resolver Workflow
+# Copy this file to your repository's .github/workflows/ directory
+
+name: Kilocode Auto-Fix
+
+on:
+  # Trigger on 'fix-me' label
+  issues:
+    types: [labeled]
+  pull_request:
+    types: [labeled]
+  
+  # Trigger on @kilocode-agent mention in comments
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  auto-fix:
+    # Only run for authorized triggers
+    if: |
+      github.event.label.name == 'fix-me' ||
+      (
+        (github.event_name == 'issue_comment' || github.event_name == 'pull_request_review_comment') &&
+        contains(github.event.comment.body, '@kilocode-agent') &&
+        (github.event.comment.author_association == 'OWNER' || 
+         github.event.comment.author_association == 'COLLABORATOR' || 
+         github.event.comment.author_association == 'MEMBER')
+      ) ||
+      (
+        github.event_name == 'pull_request_review' &&
+        contains(github.event.review.body, '@kilocode-agent') &&
+        (github.event.review.author_association == 'OWNER' || 
+         github.event.review.author_association == 'COLLABORATOR' || 
+         github.event.review.author_association == 'MEMBER')
+      )
+    
+    uses: zeromodern/kilocode-resolver-action/.github/workflows/kilocode-resolver.yml@v1
+    secrets:
+      KILOCODE_API_KEY: ${{ secrets.KILOCODE_API_KEY }}
+      PAT_TOKEN: ${{ secrets.PAT_TOKEN }}        # Optional
+      PAT_USERNAME: ${{ secrets.PAT_USERNAME }}  # Optional

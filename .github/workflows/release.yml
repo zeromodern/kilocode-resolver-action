@@ -1,0 +1,56 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get version info
+        id: version
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          MAJOR=$(echo $TAG | cut -d. -f1)
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "major=$MAJOR" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: Release ${{ steps.version.outputs.tag }}
+          body: |
+            ## Kilocode Resolver Action ${{ steps.version.outputs.tag }}
+            
+            ### Installation
+            
+            ```yaml
+            uses: zeromodern/kilocode-resolver-action@${{ steps.version.outputs.tag }}
+            ```
+            
+            Or use the major version tag for automatic minor/patch updates:
+            
+            ```yaml
+            uses: zeromodern/kilocode-resolver-action@${{ steps.version.outputs.major }}
+            ```
+            
+            See [README](https://github.com/zeromodern/kilocode-resolver-action#readme) for full documentation.
+          draft: false
+          prerelease: false
+
+      - name: Update major version tag
+        run: |
+          MAJOR=${{ steps.version.outputs.major }}
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -fa $MAJOR -m "Update $MAJOR tag to ${{ steps.version.outputs.tag }}"
+          git push origin $MAJOR --force
