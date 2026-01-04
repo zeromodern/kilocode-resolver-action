@@ -20,6 +20,14 @@ inputs:
     description: 'Username for PAT commits (defaults to kilocode-agent)'
     required: false
     default: 'kilocode-agent'
+  provider:
+    description: 'AI provider to use (e.g., openrouter, anthropic, openai)'
+    required: false
+    default: 'openrouter'
+  model:
+    description: 'AI model to use (e.g., anthropic/claude-sonnet-4-20250514)'
+    required: false
+    default: 'anthropic/claude-sonnet-4-20250514'
   target_branch:
     description: 'Target branch to create PR against'
     required: false
@@ -189,6 +197,8 @@ runs:
       shell: bash
       env:
         KILOCODE_API_KEY: ${{ inputs.kilocode_api_key }}
+        KILOCODE_PROVIDER: ${{ inputs.provider }}
+        KILOCODE_MODEL: ${{ inputs.model }}
         ALLOWED_COMMANDS: ${{ steps.config.outputs.allowed_commands }}
         DENIED_COMMANDS: ${{ steps.config.outputs.denied_commands }}
         ENABLE_BROWSER: ${{ steps.config.outputs.enable_browser }}
@@ -200,6 +210,8 @@ runs:
         cat > ~/.config/kilocode/config.json << EOF
         {
           "kilocodeToken": "$KILOCODE_API_KEY",
+          "apiProvider": "$KILOCODE_PROVIDER",
+          "apiModelId": "$KILOCODE_MODEL",
           "autoApproval": {
             "enabled": true,
             "read": { "enabled": true, "outside": false },

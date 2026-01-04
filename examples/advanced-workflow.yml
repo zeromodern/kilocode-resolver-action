@@ -65,6 +65,12 @@ jobs:
       # Custom trigger macro (default: @kilocode-agent)
       macro: '@kilocode-agent'
       
+      # AI provider to use (openrouter, anthropic, openai)
+      provider: openrouter
+      
+      # AI model to use
+      model: anthropic/claude-sonnet-4-20250514
+      
       # Path to custom config file (optional)
       # config_path: '.kilocode/config.json'
     

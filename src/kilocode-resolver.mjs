@@ -101,6 +101,8 @@ Please analyze the codebase and implement a fix for this issue. Make sure to:
  */
 export function generateKilocodeConfig(options = {}) {
   const {
+    provider = 'openrouter',
+    model = 'anthropic/claude-sonnet-4-20250514',
     allowedCommands = ['npm', 'git', 'pnpm', 'yarn', 'node', 'npx', 'make', 'cargo', 'python', 'pip'],
     deniedCommands = ['rm -rf /', 'sudo'],
     enableBrowser = false,
@@ -110,6 +112,8 @@ export function generateKilocodeConfig(options = {}) {
   } = options;
 
   return {
+    apiProvider: provider,
+    apiModelId: model,
     autoApproval: {
       enabled: true,
       read: {
