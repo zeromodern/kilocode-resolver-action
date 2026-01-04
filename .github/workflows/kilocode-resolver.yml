@@ -38,6 +38,16 @@ on:
         required: false
         type: string
         default: ""
+      provider:
+        description: "AI provider to use (e.g., openrouter, anthropic, openai)"
+        required: false
+        type: string
+        default: "openrouter"
+      model:
+        description: "AI model to use (e.g., anthropic/claude-sonnet-4-20250514)"
+        required: false
+        type: string
+        default: "anthropic/claude-sonnet-4-20250514"
     secrets:
       KILOCODE_API_KEY:
         description: "API key for Kilocode"
@@ -223,6 +233,8 @@ jobs:
       - name: Configure Kilocode CLI
         env:
           KILOCODE_API_KEY: ${{ secrets.KILOCODE_API_KEY }}
+          KILOCODE_PROVIDER: ${{ inputs.provider || 'openrouter' }}
+          KILOCODE_MODEL: ${{ inputs.model || 'anthropic/claude-sonnet-4-20250514' }}
           ALLOWED_COMMANDS: ${{ steps.config.outputs.allowed_commands }}
           DENIED_COMMANDS: ${{ steps.config.outputs.denied_commands }}
           ENABLE_BROWSER: ${{ steps.config.outputs.enable_browser }}
@@ -234,6 +246,8 @@ jobs:
           cat > ~/.config/kilocode/config.json << EOF
           {
             "kilocodeToken": "$KILOCODE_API_KEY",
+            "apiProvider": "$KILOCODE_PROVIDER",
+            "apiModelId": "$KILOCODE_MODEL",
             "autoApproval": {
               "enabled": true,
               "read": {

@@ -97,6 +97,8 @@ jobs:
       target_branch: main
       pr_type: draft
       timeout: 600
+      provider: openrouter  # AI provider (openrouter, anthropic, openai)
+      model: anthropic/claude-sonnet-4-20250514  # AI model to use
     secrets:
       KILOCODE_API_KEY: ${{ secrets.KILOCODE_API_KEY }}
 ```
@@ -114,6 +116,8 @@ steps:
       kilocode_api_key: ${{ secrets.KILOCODE_API_KEY }}
       github_token: ${{ secrets.GITHUB_TOKEN }}
       target_branch: main
+      provider: openrouter
+      model: anthropic/claude-sonnet-4-20250514
 ```
 
 ## Configuration
@@ -128,6 +132,8 @@ steps:
 | `runner` | `ubuntu-latest` | GitHub runner to use |
 | `macro` | `@kilocode-agent` | Trigger macro for comments |
 | `config_path` | Auto-detected | Path to config file |
+| `provider` | `openrouter` | AI provider to use (e.g., `openrouter`, `anthropic`, `openai`) |
+| `model` | `anthropic/claude-sonnet-4-20250514` | AI model to use |
 
 ### Repository Config File
 
