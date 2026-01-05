@@ -242,54 +242,53 @@ jobs:
           QUESTION_TIMEOUT: ${{ steps.config.outputs.question_timeout }}
           RETRY_DELAY: ${{ steps.config.outputs.retry_delay }}
         run: |
-          mkdir -p ~/.config/kilocode
-          cat > ~/.config/kilocode/config.json << EOF
+          mkdir -p ~/.kilocode
+          
+          # Build provider-specific profile configuration
+          if [ "$KILOCODE_PROVIDER" = "kilocode" ]; then
+            PROFILE_CONFIG='"kilocodeToken": "'"$KILOCODE_API_KEY"'", "kilocodeModel": "'"$KILOCODE_MODEL"'"'
+          elif [ "$KILOCODE_PROVIDER" = "openrouter" ]; then
+            PROFILE_CONFIG='"openRouterApiKey": "'"$KILOCODE_API_KEY"'", "openRouterModelId": "'"$KILOCODE_MODEL"'"'
+          elif [ "$KILOCODE_PROVIDER" = "anthropic" ]; then
+            PROFILE_CONFIG='"apiKey": "'"$KILOCODE_API_KEY"'", "apiModelId": "'"$KILOCODE_MODEL"'"'
+          elif [ "$KILOCODE_PROVIDER" = "openai-native" ]; then
+            PROFILE_CONFIG='"openAiNativeApiKey": "'"$KILOCODE_API_KEY"'", "apiModelId": "'"$KILOCODE_MODEL"'"'
+          else
+            # Generic fallback for other providers
+            PROFILE_CONFIG='"apiKey": "'"$KILOCODE_API_KEY"'", "apiModelId": "'"$KILOCODE_MODEL"'"'
+          fi
+          
+          cat > ~/.kilocode/config.json << EOF
           {
-            "kilocodeToken": "$KILOCODE_API_KEY",
-            "apiProvider": "$KILOCODE_PROVIDER",
-            "apiModelId": "$KILOCODE_MODEL",
+            "profiles": [
+              {
+                "id": "default",
+                "provider": "$KILOCODE_PROVIDER",
+                $PROFILE_CONFIG
+              }
+            ],
             "autoApproval": {
               "enabled": true,
-              "read": {
-                "enabled": true,
-                "outside": false
-              },
-              "write": {
-                "enabled": true,
-                "outside": false,
-                "protected": true
-              },
+              "read": { "enabled": true, "outside": false },
+              "write": { "enabled": true, "outside": false, "protected": true },
               "execute": {
                 "enabled": true,
                 "allowed": $ALLOWED_COMMANDS,
                 "denied": $DENIED_COMMANDS
               },
-              "browser": {
-                "enabled": $ENABLE_BROWSER
-              },
-              "mcp": {
-                "enabled": $ENABLE_MCP
-              },
-              "mode": {
-                "enabled": true
-              },
-              "subtasks": {
-                "enabled": true
-              },
-              "question": {
-                "enabled": true,
-                "timeout": $QUESTION_TIMEOUT
-              },
-              "retry": {
-                "enabled": true,
-                "delay": $RETRY_DELAY
-              },
-              "todo": {
-                "enabled": true
-              }
+              "browser": { "enabled": $ENABLE_BROWSER },
+              "mcp": { "enabled": $ENABLE_MCP },
+              "mode": { "enabled": true },
+              "subtasks": { "enabled": true },
+              "question": { "enabled": true, "timeout": $QUESTION_TIMEOUT },
+              "retry": { "enabled": true, "delay": $RETRY_DELAY },
+              "todo": { "enabled": true }
             }
           }
           EOF
+          
+          echo "::notice::Kilocode config written to ~/.kilocode/config.json"
+          echo "::notice::Provider: $KILOCODE_PROVIDER, Model: $KILOCODE_MODEL"
 
       - name: Create fix branch
         id: branch
