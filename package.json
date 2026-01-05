@@ -1,0 +1,28 @@
+{
+  "name": "kilocode-resolver-action",
+  "version": "1.0.0",
+  "description": "Automatically fix GitHub issues and PRs using Kilocode AI",
+  "type": "module",
+  "scripts": {
+    "test": "node src/tests/kilocode-resolver.test.mjs && node src/tests/config-integration.test.mjs",
+    "test:unit": "node src/tests/kilocode-resolver.test.mjs",
+    "test:integration": "node src/tests/config-integration.test.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zeromodern/kilocode-resolver-action.git"
+  },
+  "keywords": [
+    "github-action",
+    "kilocode",
+    "ai",
+    "automation",
+    "issue-resolver"
+  ],
+  "author": "zeromodern",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/zeromodern/kilocode-resolver-action/issues"
+  },
+  "homepage": "https://github.com/zeromodern/kilocode-resolver-action#readme"
+}

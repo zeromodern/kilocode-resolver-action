@@ -8,6 +8,7 @@ import {
   parseGitHubEvent,
   generatePrompt,
   generateKilocodeConfig,
+  getConfigPath,
   generateBranchName,
   generateCommitMessage,
   generatePRBody,
@@ -257,7 +258,55 @@ test('should handle null body', () => {
 // generateKilocodeConfig tests
 console.log(`\n${colors.yellow}generateKilocodeConfig${colors.reset}`);
 
-test('should generate default config', () => {
+test('should generate default config with profiles array', () => {
+  const config = generateKilocodeConfig();
+  assertTrue(Array.isArray(config.profiles));
+  assertEqual(config.profiles.length, 1);
+  assertEqual(config.profiles[0].id, 'default');
+  assertEqual(config.profiles[0].provider, 'openrouter');
+});
+
+test('should generate kilocode provider config', () => {
+  const config = generateKilocodeConfig({
+    apiKey: 'test-key',
+    provider: 'kilocode',
+    model: 'anthropic/claude-sonnet-4',
+  });
+  assertEqual(config.profiles[0].kilocodeToken, 'test-key');
+  assertEqual(config.profiles[0].kilocodeModel, 'anthropic/claude-sonnet-4');
+});
+
+test('should generate openrouter provider config', () => {
+  const config = generateKilocodeConfig({
+    apiKey: 'sk-or-test',
+    provider: 'openrouter',
+    model: 'anthropic/claude-3-5-sonnet',
+  });
+  assertEqual(config.profiles[0].openRouterApiKey, 'sk-or-test');
+  assertEqual(config.profiles[0].openRouterModelId, 'anthropic/claude-3-5-sonnet');
+});
+
+test('should generate anthropic provider config', () => {
+  const config = generateKilocodeConfig({
+    apiKey: 'sk-ant-test',
+    provider: 'anthropic',
+    model: 'claude-sonnet-4.5',
+  });
+  assertEqual(config.profiles[0].apiKey, 'sk-ant-test');
+  assertEqual(config.profiles[0].apiModelId, 'claude-sonnet-4.5');
+});
+
+test('should generate openai-native provider config', () => {
+  const config = generateKilocodeConfig({
+    apiKey: 'sk-test',
+    provider: 'openai-native',
+    model: 'gpt-4o',
+  });
+  assertEqual(config.profiles[0].openAiNativeApiKey, 'sk-test');
+  assertEqual(config.profiles[0].apiModelId, 'gpt-4o');
+});
+
+test('should include autoApproval settings', () => {
   const config = generateKilocodeConfig();
   assertTrue(config.autoApproval.enabled);
   assertTrue(config.autoApproval.read.enabled);
@@ -290,6 +339,14 @@ test('should allow enabling browser', () => {
 test('should allow custom question timeout', () => {
   const config = generateKilocodeConfig({ questionTimeout: 60 });
   assertEqual(config.autoApproval.question.timeout, 60);
+});
+
+// getConfigPath tests
+console.log(`\n${colors.yellow}getConfigPath${colors.reset}`);
+
+test('should return correct config path', () => {
+  const path = getConfigPath();
+  assertEqual(path, '~/.kilocode/config.json');
 });
 
 // generateBranchName tests
